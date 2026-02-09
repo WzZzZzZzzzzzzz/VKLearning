@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #pragma comment(lib, "glfw3.lib") //链接编译所需的静态库
 
+
 //窗口的指针，全局变量自动初始化为NULL
 GLFWwindow* pWindow;
 //显示器信息的指针
@@ -11,6 +12,8 @@ GLFWmonitor* pMonitor;
 const char* windowTitle = "EasyVK";
 
 bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable = true, bool limitFrameRate = true) {
+    using namespace vulkan;
+
     if (!glfwInit()) {
         std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to initialize GLFW!\n");
         return false;
@@ -27,7 +30,38 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
         glfwTerminate();
         return false;
     }
-    /*待Ch1-3和Ch1-4填充*/
+#ifdef _WIN32
+	graphicsBase::Base().AddInstanceExtension(VK_KHR_SURFACE_EXTENSION_NAME);
+	graphicsBase::Base().AddInstanceExtension(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#else
+    uint32_t extensionCount = 0;
+    const char** extensionNames;
+    extensionNames = glfwGetRequiredInstanceExtensions(&extensionCount);
+    if (!extensionNames) {
+        std::cout << std::format("[ InitializeWindow ]\nVulkan is not available on this machine!\n");
+        glfwTerminate();
+        return false;
+    }
+    for (size_t i = 0; i < extensionCount; i++)
+        graphicsBase::Base().AddInstanceExtension(extensionNames[i]);
+#endif
+    graphicsBase::Base().AddDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    
+    if (graphicsBase::Base().CreateInstance())
+        return false;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    if (VkResult result = glfwCreateWindowSurface(graphicsBase::Base().Instance(), pWindow, nullptr, &surface)) {
+        std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to create a window surface!\nError code: {}\n", string_VkResult(result));
+        glfwTerminate();
+        return false;
+    }
+    graphicsBase::Base().Surface(surface);
+    if (graphicsBase::Base().GetPhysicalDevices() ||
+        graphicsBase::Base().DeterminePhysicalDevice(0, true, false) ||
+        graphicsBase::Base().CreateDevice())
+        return false;
+    
+    // for1.4
     return true;
 }
 void TerminateWindow() {
