@@ -35,6 +35,10 @@ namespace vulkan {
         std::vector<const char*> instanceLayers;
         std::vector<const char*> instanceExtensions;
         std::vector<const char*> deviceExtensions;
+        std::vector<void(*)()> callbacks_createSwapchain;
+        std::vector<void(*)()> callbacks_destroySwapchain;
+        std::vector<void(*)()> callbacks_createDevice;
+        std::vector<void(*)()> callbacks_destroyDevice;
         
         VkDebugUtilsMessengerEXT debugMessenger;
 
@@ -43,12 +47,38 @@ namespace vulkan {
         graphicsBase() = default;
         graphicsBase(graphicsBase&&) = delete;
         ~graphicsBase() {
-            
+            if (!instance)
+                return;
+            if (device) {
+                WaitIdle();
+                if (swapchain) {
+                    ExecuteCallbacks(callbacks_destroySwapchain);
+                    for (auto& i : swapchainImageViews)
+                        if (i)
+                            vkDestroyImageView(device, i, nullptr);
+                    vkDestroySwapchainKHR(device, swapchain, nullptr);
+                }
+                ExecuteCallbacks(callbacks_destroyDevice);
+                vkDestroyDevice(device, nullptr);
+            }
+            if (surface)
+                vkDestroySurfaceKHR(instance, surface, nullptr);
+            if (debugMessenger) {
+                PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessenger =
+                    reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
+                if (vkDestroyDebugUtilsMessenger)
+                    vkDestroyDebugUtilsMessenger(instance, debugMessenger, nullptr);
+            }
+            vkDestroyInstance(instance, nullptr);
         }
         static void AddLayerOrExtension(std::vector<const char*>& container, const char* name) {
             for (auto& i : container)
                 if (!strcmp(name, i)) return;
             container.push_back(name);
+        }
+        static void ExecuteCallbacks(std::vector<void(*)()> callbacks) {
+            for (size_t size = callbacks.size(), i = 0; i < size; i++)
+                callbacks[i]();
         }
         VkResult CreateDebugMessenger() {
             static PFN_vkDebugUtilsMessengerCallbackEXT DebugUtilsMessengerCallback = [](
@@ -131,7 +161,35 @@ namespace vulkan {
             return VK_SUCCESS;
         }
         VkResult CreateSwapchain_Internal() {
-            // for1.4
+            if (VkResult result = vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapchain)) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to create a swapchain!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            uint32_t swapchainImageCount;
+            if (VkResult result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, nullptr)) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to get the count of swapchain images!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            swapchainImages.resize(swapchainImageCount);
+            if (VkResult result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, swapchainImages.data())) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to get swapchain images!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            swapchainImageViews.resize(swapchainImageCount);
+            VkImageViewCreateInfo imageViewCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = swapchainCreateInfo.imageFormat,
+                .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+            };
+            for (size_t i = 0; i < swapchainImageCount; i++) {
+                imageViewCreateInfo.image = swapchainImages[i];
+                if (VkResult result = vkCreateImageView(device, &imageViewCreateInfo, nullptr, &swapchainImageViews[i])) {
+                    std::cout << std::format("[ graphicsBase ] ERROR\nFailed to create a swapchain image view!\nError code: {}\n", string_VkResult(result));
+                    return result;
+                }
+            }
+            return VK_SUCCESS;
         }
 
     public:
@@ -223,6 +281,18 @@ namespace vulkan {
         void AddInstanceExtension (const char* extensionName) {
             AddLayerOrExtension(instanceExtensions, extensionName);          
         }
+        void AddCallback_CreateSwapchain(void(*function)()) {
+            callbacks_createSwapchain.push_back(function);
+        }
+        void AddCallback_DestroySwapchain(void(*function)()) {
+            callbacks_destroySwapchain.push_back(function);
+        }
+        void AddCallback_CreateDevice(void(*function)()) {
+            callbacks_createDevice.push_back(function);
+        }
+        void AddCallback_DestroyDevice(void(*function)()) {
+            callbacks_destroyDevice.push_back(function);
+        }
         void Surface(VkSurfaceKHR surface) {
             if (!this->surface)
                 this->surface = surface;
@@ -284,6 +354,9 @@ namespace vulkan {
                         i = nullptr;
                 }
             }
+            std::cout << std::format("Renderer: {}\n", physicalDeviceProperties.deviceName);
+            ExecuteCallbacks(callbacks_createDevice);
+            return VK_SUCCESS;
         }
         void InstanceLayers(const std::vector<const char*>& layerNames) {
             instanceLayers = layerNames;
@@ -433,6 +506,27 @@ namespace vulkan {
             std::cout << std::format("Renderer: {}\n", physicalDeviceProperties.deviceName);
             // for1.4
         }
+        VkResult RecreateDevice(VkDeviceCreateFlags flags = 0) {
+            if (device) {
+                if (VkResult result = WaitIdle();
+                    result != VK_SUCCESS &&
+                    result != VK_ERROR_DEVICE_LOST)
+                if (swapchain) {
+                    ExecuteCallbacks(callbacks_destroySwapchain);
+                    for (auto& i : swapchainImageViews)
+                        if (i)
+                            vkDestroyImageView(device, i, nullptr);
+                    swapchainImageViews.clear();
+                    vkDestroySwapchainKHR(device, swapchain, nullptr);
+                    swapchain = VK_NULL_HANDLE;
+                    swapchainCreateInfo = {};
+                }
+                ExecuteCallbacks(callbacks_destroyDevice);
+                vkDestroyDevice(device, nullptr);
+                device = VK_NULL_HANDLE;
+            }
+            return CreateDevice(flags);
+        }
         VkResult CheckDeviceExtensions(std::span<const char*> extensionsToCheck, const char* layerName = nullptr) const {
             // for1.3
         }
@@ -440,10 +534,45 @@ namespace vulkan {
             // for1.3
         }
         VkResult GetSurfaceFormats() {
-            // for1.4
+            uint32_t surfaceFormatCount;
+            if (VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr)) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to get the count of surface formats!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            if (!surfaceFormatCount)
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to find any supported surface format!\n"),
+                abort();
+            availableSurfaceFormats.resize(surfaceFormatCount);
+            VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, availableSurfaceFormats.data());
+            if (result)
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to get surface formats!\nError code: {}\n", string_VkResult(result));
+            return result;
         }
         VkResult SetSurfaceFormat(VkSurfaceFormatKHR surfaceFormat) {
-            // for1.4
+            bool formatIsAvailable = false;
+            if (!surfaceFormat.format) {
+                for (auto& i : availableSurfaceFormats)
+                    if (i.colorSpace == surfaceFormat.colorSpace) {
+                        swapchainCreateInfo.imageFormat = i.format;
+                        swapchainCreateInfo.imageColorSpace = i.colorSpace;
+                        formatIsAvailable = true;
+                        break;
+                    }
+            }
+            else
+                for (auto& i : availableSurfaceFormats)
+                    if (i.format == surfaceFormat.format &&
+                        i.colorSpace == surfaceFormat.colorSpace) {
+                        swapchainCreateInfo.imageFormat = i.format;
+                        swapchainCreateInfo.imageColorSpace = i.colorSpace;
+                        formatIsAvailable = true;
+                        break;
+                    }
+            if (!formatIsAvailable)
+                return VK_ERROR_FORMAT_NOT_SUPPORTED;
+            if (swapchain)
+                return RecreateSwapchain();
+            return VK_SUCCESS;
         }
         VkResult CreateSwapchain(bool limitFrameRate = true, VkSwapchainCreateFlagsKHR flags = 0) {
             VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
@@ -458,7 +587,6 @@ namespace vulkan {
                     glm::clamp(defaultWindowSize.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width),
                     glm::clamp(defaultWindowSize.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height) } :
                 surfaceCapabilities.currentExtent;
-            swapchainCreateInfo.imageArrayLayers = 1;
             swapchainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
             if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
                 swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
@@ -475,10 +603,83 @@ namespace vulkan {
                 swapchainCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             else
                 std::cout << std::format("[ graphicsBase ] WARNING\nVK_IMAGE_USAGE_TRANSFER_DST_BIT isn't supported!\n");
+            if (availableSurfaceFormats.empty())
+                if (VkResult result = GetSurfaceFormats())
+                    return result;
+            if (!swapchainCreateInfo.imageFormat)
+                if (SetSurfaceFormat({ VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR }) &&
+                    SetSurfaceFormat({ VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })) {
+                    swapchainCreateInfo.imageFormat = availableSurfaceFormats[0].format;
+                    swapchainCreateInfo.imageColorSpace = availableSurfaceFormats[0].colorSpace;
+                    std::cout << std::format("[ graphicsBase ] WARNING\nFailed to select a four-component UNORM surface format!\n");
+                }
+            uint32_t surfacePresentModeCount;
+            if (VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &surfacePresentModeCount, nullptr)) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to get the count of surface present modes!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            if (!surfacePresentModeCount)
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to find any surface present mode!\n"),
+                abort();
+            std::vector<VkPresentModeKHR> surfacePresentModes(surfacePresentModeCount);
+            if (VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &surfacePresentModeCount, surfacePresentModes.data())) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to get surface present modes!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+            if (!limitFrameRate)
+                for (size_t i = 0; i < surfacePresentModeCount; i++)
+                    if (surfacePresentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+                        swapchainCreateInfo.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+                        break;
+                    }
+            
+            swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+            swapchainCreateInfo.flags = flags;
+            swapchainCreateInfo.surface = surface;
+            swapchainCreateInfo.imageArrayLayers = 1;
+            swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            swapchainCreateInfo.clipped = VK_TRUE;
 
+            if (VkResult result = CreateSwapchain_Internal())
+                return result;
+            ExecuteCallbacks(callbacks_createSwapchain);
+            return VK_SUCCESS;
         }
         VkResult RecreateSwapchain() {
-            // for1.4
+            VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
+            if (VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities)) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to get physical device surface capabilities!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            if (surfaceCapabilities.currentExtent.width == 0 ||
+                surfaceCapabilities.currentExtent.height == 0)
+                return VK_SUBOPTIMAL_KHR;
+            swapchainCreateInfo.imageExtent = surfaceCapabilities.currentExtent;
+            swapchainCreateInfo.oldSwapchain = swapchain;
+            VkResult result = vkQueueWaitIdle(queue_graphics);
+            if (!result &&
+                queue_graphics != queue_presentation)
+                result = vkQueueWaitIdle(queue_presentation);
+            if (result) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to wait for the queue to be idle!\nError code: {}\n", string_VkResult(result));
+                return result;
+            }
+            ExecuteCallbacks(callbacks_destroySwapchain);
+            for (auto& i : swapchainImageViews)
+                if (i)
+                    vkDestroyImageView(device, i, nullptr);
+            swapchainImageViews.clear();
+            if (VkResult result = CreateSwapchain_Internal())
+                return result;
+            ExecuteCallbacks(callbacks_createSwapchain);
+            return VK_SUCCESS;
+        }
+        VkResult WaitIdle() const {
+            VkResult result = vkDeviceWaitIdle(device);
+            if (result)
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to wait for the device to be idle!\nError code: {}\n", string_VkResult(result));
+            return result;
         }
         static graphicsBase& Base() {
             return singleton;

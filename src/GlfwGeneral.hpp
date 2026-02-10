@@ -61,11 +61,14 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
         graphicsBase::Base().CreateDevice())
         return false;
     
-    // for1.4
+    if (graphicsBase::Base().CreateSwapchain(limitFrameRate))
+        return false;
     return true;
 }
 void TerminateWindow() {
-    /*待后续填充*/
+    using namespace vulkan;
+    graphicsBase::Base().WaitIdle();
+    glfwTerminate();
 }
 
 void TitleFps() {
