@@ -15,7 +15,7 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
     using namespace vulkan;
 
     if (!glfwInit()) {
-        std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to initialize GLFW!\n");
+        outStream << std::format("[ InitializeWindow ] ERROR\nFailed to initialize GLFW!\n");
         return false;
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -26,7 +26,7 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
         glfwCreateWindow(pMode->width, pMode->height, windowTitle, pMonitor, nullptr) :
         glfwCreateWindow(size.width, size.height, windowTitle, nullptr, nullptr);
     if (!pWindow) {
-        std::cout << std::format("[ InitializeWindow ]\nFailed to create a glfw window!\n");
+        outStream << std::format("[ InitializeWindow ]\nFailed to create a glfw window!\n");
         glfwTerminate();
         return false;
     }
@@ -38,7 +38,7 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
     const char** extensionNames;
     extensionNames = glfwGetRequiredInstanceExtensions(&extensionCount);
     if (!extensionNames) {
-        std::cout << std::format("[ InitializeWindow ]\nVulkan is not available on this machine!\n");
+        outStream << std::format("[ InitializeWindow ]\nVulkan is not available on this machine!\n");
         glfwTerminate();
         return false;
     }
@@ -51,7 +51,7 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
         return false;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     if (VkResult result = glfwCreateWindowSurface(graphicsBase::Base().Instance(), pWindow, nullptr, &surface)) {
-        std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to create a window surface!\nError code: {}\n", string_VkResult(result));
+        outStream << std::format("[ InitializeWindow ] ERROR\nFailed to create a window surface!\nError code: {}\n", string_VkResult(result));
         glfwTerminate();
         return false;
     }

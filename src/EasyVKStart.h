@@ -34,3 +34,25 @@
 #endif
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
+
+template<typename T>
+class arrayRef {
+    T* const pArray = nullptr;
+    size_t count = 0;
+public:
+    arrayRef() = default;
+    arrayRef(T& data) :pArray(&data), count(1) {}
+    template<size_t ElementCount>
+    arrayRef(T(&data)[ElementCount]) : pArray(data), count(ElementCount) {}
+    arrayRef(T* pData, size_t elementCount) :pArray(pData), count(elementCount) {}
+    arrayRef(const arrayRef<std::remove_const_t<T>>& other) :pArray(other.Pointer()), count(other.Count()) {}
+    //Getter
+    T* Pointer() const { return pArray; }
+    size_t Count() const { return count; }
+    //Const Function
+    T& operator[](size_t index) const { return pArray[index]; }
+    T* begin() const { return pArray; }
+    T* end() const { return pArray + count; }
+    //Non-const Function
+    arrayRef& operator=(const arrayRef&) = delete;
+};
