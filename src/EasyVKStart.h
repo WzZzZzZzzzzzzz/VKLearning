@@ -56,3 +56,4 @@ public:
     //Non-const Function
     arrayRef& operator=(const arrayRef&) = delete;
 };
+#define ExecuteOnce(...) { static bool executed = false; if (executed) return __VA_ARGS__; executed = true; }
