@@ -2,6 +2,11 @@
 #include "EasyVulkan.hpp"
 using namespace vulkan;
 
+struct vertex {
+    glm::vec2 position;
+    glm::vec4 color;
+};
+
 pipelineLayout pipelineLayout_triangle;
 pipeline pipeline_triangle;  
 
@@ -16,8 +21,8 @@ void CreateLayout() {
 }
 
 void CreatePipeline() {
-    static shaderModule vert("shader/FirstTriangle.vert.spv");
-    static shaderModule frag("shader/FirstTriangle.frag.spv");
+    static shaderModule vert("shader/VertexBuffer.vert.spv");
+    static shaderModule frag("shader/VertexBuffer.frag.spv");
     static VkPipelineShaderStageCreateInfo shaderStageCreateInfos_triangle[2] = {
         vert.StageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT),
         frag.StageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT)
@@ -26,6 +31,12 @@ void CreatePipeline() {
         graphicsPipelineCreateInfoPack pipelineCiPack;
         pipelineCiPack.createInfo.layout = pipelineLayout_triangle;
         pipelineCiPack.createInfo.renderPass = RenderPassAndFramebuffers().renderPass;
+        //数据来自0号顶点缓冲区，输入频率是逐顶点输入
+        pipelineCiPack.vertexInputBindings.emplace_back(0, sizeof(vertex), VK_VERTEX_INPUT_RATE_VERTEX);
+        //location为0，数据来自0号顶点缓冲区，vec2对应VK_FORMAT_R32G32_SFLOAT，用offsetof计算position在vertex中的起始位置
+        pipelineCiPack.vertexInputAttributes.emplace_back(0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(vertex, position));
+        //location为1，数据来自0号顶点缓冲区，vec4对应VK_FORMAT_R32G32B32A32_SFLOAT，用offsetof计算color在vertex中的起始位置
+        pipelineCiPack.vertexInputAttributes.emplace_back(1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(vertex, color));
         pipelineCiPack.inputAssemblyStateCi.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         pipelineCiPack.viewports.emplace_back(0.f, 0.f, float(windowSize.width), float(windowSize.height), 0.f, 1.f);
         pipelineCiPack.scissors.emplace_back(VkOffset2D{}, windowSize);
@@ -61,6 +72,14 @@ int main() {
     commandPool commandPool(graphicsBase::Base().QueueFamilyIndex_Graphics(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     commandPool.AllocateBuffers(commandBuffer);
 
+    vertex vertices[] = {
+        { {  .0f, -.5f }, { 1, 0, 0, 1 } }, //红色
+        { { -.5f,  .5f }, { 0, 1, 0, 1 } }, //绿色
+        { {  .5f,  .5f }, { 0, 0, 1, 1 } }  //蓝色
+    };
+    vertexBuffer vertexBuffer(sizeof vertices);
+    vertexBuffer.TransferData(vertices);
+
     VkClearValue clearColor = { .color = { 1.f, 0.f, 0.f, 1.f } };
 
     while (!glfwWindowShouldClose(pWindow)) {
@@ -72,10 +91,10 @@ int main() {
 
         commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         renderPass.CmdBegin(commandBuffer, framebuffers[i], { {}, windowSize }, clearColor);
-        
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffer.Address(), &offset);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_triangle);
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
-
         renderPass.CmdEnd(commandBuffer);
         commandBuffer.End();
 
