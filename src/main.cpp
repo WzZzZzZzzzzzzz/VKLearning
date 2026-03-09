@@ -17,12 +17,20 @@ const auto& RenderPassAndFramebuffers() {
 }
 
 void CreateLayout() {
-    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+    VkPushConstantRange pushConstantRange = {
+        VK_SHADER_STAGE_VERTEX_BIT,
+        0,
+        24
+    };
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushConstantRange
+    };
     pipelineLayout_triangle.Create(pipelineLayoutCreateInfo);
 }
 
 void CreatePipeline() {
-    static shaderModule vert("shader/InstancedRendering.vert.spv");
+    static shaderModule vert("shader/PushConstant.vert.spv");
     static shaderModule frag("shader/VertexBuffer.frag.spv");
     static VkPipelineShaderStageCreateInfo shaderStageCreateInfos_triangle[2] = {
         vert.StageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT),
@@ -75,19 +83,17 @@ int main() {
     commandPool.AllocateBuffers(commandBuffer);
 
     vertex vertices[] = {
-        { {  .0f, -.5f }, { 1, 0, 0, 1 } },
-        { { -.5f,  .5f }, { 0, 1, 0, 1 } },
-        { {  .5f,  .5f }, { 0, 0, 1, 1 } }
-    };
-    vertexBuffer vertexBuffer_perVertex(sizeof vertices);
-	vertexBuffer_perVertex.TransferData(vertices);
-    glm::vec2 offsets[] = {
+		{ { .0f, -.5f }, { 1, 0, 0, 1 } },
+		{ { -.5f, .5f }, { 0, 1, 0, 1 } },
+		{ { .5f, .5f }, { 0, 0, 1, 1 } }
+	};
+	vertexBuffer vertexBuffer(sizeof vertices);
+	vertexBuffer.TransferData(vertices);
+	glm::vec2 pushConstants[] = {
 		{ .0f, .0f },
 		{ -.5f, .0f },
-		{ .5f, .0f }
+		{ .5f, .0f },
 	};
-	vertexBuffer vertexBuffer_perInstance(sizeof offsets);
-	vertexBuffer_perInstance.TransferData(offsets);
 
     VkClearValue clearColor = { .color = { 1.f, 0.f, 0.f, 1.f } };
 
@@ -100,11 +106,11 @@ int main() {
 
         commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         renderPass.CmdBegin(commandBuffer, framebuffers[i], { {}, windowSize }, clearColor);
-        VkBuffer buffers[2] = { vertexBuffer_perVertex, vertexBuffer_perInstance };
-        VkDeviceSize offsets[2] = {};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 2, buffers, offsets);
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_triangle);
-        vkCmdDraw(commandBuffer, 3, 3, 0, 0);
+        VkDeviceSize offset = 0;
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffer.Address(), &offset);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_triangle);
+		vkCmdPushConstants(commandBuffer, pipelineLayout_triangle, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof pushConstants, &pushConstants);
+		vkCmdDraw(commandBuffer, 3, 3, 0, 0);
         renderPass.CmdEnd(commandBuffer);
         commandBuffer.End();
 
