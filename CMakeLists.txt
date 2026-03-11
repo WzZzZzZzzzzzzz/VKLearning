@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(DEP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/dependency)
 
-add_executable(${PROJECT_NAME} src/main.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/stb_impl.cpp)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 target_include_directories(${PROJECT_NAME} PRIVATE 

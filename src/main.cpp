@@ -9,7 +9,8 @@ struct vertex {
 };
 
 pipelineLayout pipelineLayout_triangle;
-pipeline pipeline_triangle;  
+pipeline pipeline_triangle;
+descriptorSetLayout descriptorSetLayout_triangle;
 
 const auto& RenderPassAndFramebuffers() {
     static const auto& rpwf = easyVulkan::CreateRpwf_Screen();
@@ -17,20 +18,26 @@ const auto& RenderPassAndFramebuffers() {
 }
 
 void CreateLayout() {
-    VkPushConstantRange pushConstantRange = {
-        VK_SHADER_STAGE_VERTEX_BIT,
-        0,
-        24
+    VkDescriptorSetLayoutBinding descriptorSetLayoutBinding_trianglePosition = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
     };
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo_triangle = {
+        .bindingCount = 1,
+        .pBindings = &descriptorSetLayoutBinding_trianglePosition
+    };
+    descriptorSetLayout_triangle.Create(descriptorSetLayoutCreateInfo_triangle);
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &pushConstantRange
+        .setLayoutCount = 1,
+        .pSetLayouts = descriptorSetLayout_triangle.Address()
     };
     pipelineLayout_triangle.Create(pipelineLayoutCreateInfo);
 }
 
 void CreatePipeline() {
-    static shaderModule vert("shader/PushConstant.vert.spv");
+    static shaderModule vert("shader/UniformBuffer.vert.spv");
     static shaderModule frag("shader/VertexBuffer.frag.spv");
     static VkPipelineShaderStageCreateInfo shaderStageCreateInfos_triangle[2] = {
         vert.StageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT),
@@ -62,14 +69,14 @@ void CreatePipeline() {
     };
     graphicsBase::Base().AddCallback_CreateSwapchain(Create);
     graphicsBase::Base().AddCallback_DestroySwapchain(Destroy);
-    //调用Create()以创建管线
     Create();
 }
 
 int main() {
     if (!InitializeWindow({1280,720}))
         return -1;
-
+    easyVulkan::BootScreen("pictures/2k.png", VK_FORMAT_R8G8B8A8_UNORM);
+    std::this_thread::sleep_for(std::chrono::seconds(1)); 
     const auto& [renderPass, framebuffers] = RenderPassAndFramebuffers();
     CreateLayout();
     CreatePipeline();
@@ -89,11 +96,26 @@ int main() {
 	};
 	vertexBuffer vertexBuffer(sizeof vertices);
 	vertexBuffer.TransferData(vertices);
-	glm::vec2 pushConstants[] = {
-		{ .0f, .0f },
-		{ -.5f, .0f },
-		{ .5f, .0f },
-	};
+	glm::vec2 uniform_positions[] = {
+        {  .0f, .0f }, {},
+        { -.5f, .0f }, {},
+        {  .5f, .0f }, {}
+    };
+    uniformBuffer uniformBuffer(sizeof uniform_positions);
+    uniformBuffer.TransferData(uniform_positions);
+
+    VkDescriptorPoolSize descriptorPoolSizes[] = {
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
+    };
+    descriptorPool descriptorPool(1, descriptorPoolSizes);
+    descriptorSet descriptorSet_trianglePosition;
+    descriptorPool.AllocateSets(descriptorSet_trianglePosition, descriptorSetLayout_triangle);
+    VkDescriptorBufferInfo bufferInfo = {
+        .buffer = uniformBuffer,
+        .offset = 0,
+        .range = sizeof uniform_positions
+    };
+    descriptorSet_trianglePosition.Write(bufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     VkClearValue clearColor = { .color = { 1.f, 0.f, 0.f, 1.f } };
 
@@ -109,7 +131,8 @@ int main() {
         VkDeviceSize offset = 0;
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffer.Address(), &offset);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_triangle);
-		vkCmdPushConstants(commandBuffer, pipelineLayout_triangle, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof pushConstants, &pushConstants);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			pipelineLayout_triangle, 0, 1, descriptorSet_trianglePosition.Address(), 0, nullptr);
 		vkCmdDraw(commandBuffer, 3, 3, 0, 0);
         renderPass.CmdEnd(commandBuffer);
         commandBuffer.End();
