@@ -3,6 +3,262 @@
 #include "VKFormat.h"
 
 namespace vulkan {
+    struct graphicsPipelineCreateInfoPack {
+        VkGraphicsPipelineCreateInfo createInfo =
+        { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+        std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+        //Vertex Input
+        VkPipelineVertexInputStateCreateInfo vertexInputStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+        std::vector<VkVertexInputBindingDescription> vertexInputBindings;
+        std::vector<VkVertexInputAttributeDescription> vertexInputAttributes;
+        //Input Assembly
+        VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+        //Tessellation
+        VkPipelineTessellationStateCreateInfo tessellationStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO };
+        //Viewport
+        VkPipelineViewportStateCreateInfo viewportStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+        std::vector<VkViewport> viewports;
+        std::vector<VkRect2D> scissors;
+        uint32_t dynamicViewportCount = 1;
+        uint32_t dynamicScissorCount = 1;
+        //Rasterization
+        VkPipelineRasterizationStateCreateInfo rasterizationStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+        //Multisample
+        VkPipelineMultisampleStateCreateInfo multisampleStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+        //Depth & Stencil
+        VkPipelineDepthStencilStateCreateInfo depthStencilStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+        //Color Blend
+        VkPipelineColorBlendStateCreateInfo colorBlendStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+        std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachmentStates;
+        //Dynamic
+        VkPipelineDynamicStateCreateInfo dynamicStateCi =
+        { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+        std::vector<VkDynamicState> dynamicStates;
+        //--------------------
+        graphicsPipelineCreateInfoPack() {
+            SetCreateInfos();
+            createInfo.basePipelineIndex = -1;
+        }
+        graphicsPipelineCreateInfoPack(const graphicsPipelineCreateInfoPack& other) noexcept {
+            createInfo = other.createInfo;
+            SetCreateInfos();
+
+            vertexInputStateCi = other.vertexInputStateCi;
+            inputAssemblyStateCi = other.inputAssemblyStateCi;
+            tessellationStateCi = other.tessellationStateCi;
+            viewportStateCi = other.viewportStateCi;
+            rasterizationStateCi = other.rasterizationStateCi;
+            multisampleStateCi = other.multisampleStateCi;
+            depthStencilStateCi = other.depthStencilStateCi;
+            colorBlendStateCi = other.colorBlendStateCi;
+            dynamicStateCi = other.dynamicStateCi;
+
+            shaderStages = other.shaderStages;
+            vertexInputBindings = other.vertexInputBindings;
+            vertexInputAttributes = other.vertexInputAttributes;
+            viewports = other.viewports;
+            scissors = other.scissors;
+            colorBlendAttachmentStates = other.colorBlendAttachmentStates;
+            dynamicStates = other.dynamicStates;
+            UpdateAllArrayAddresses();
+        }
+        //Getter
+        operator VkGraphicsPipelineCreateInfo& () { return createInfo; }
+        //Non-const Function
+        void UpdateAllArrays() {
+            createInfo.stageCount = shaderStages.size();
+            vertexInputStateCi.vertexBindingDescriptionCount = vertexInputBindings.size();
+            vertexInputStateCi.vertexAttributeDescriptionCount = vertexInputAttributes.size();
+            viewportStateCi.viewportCount = viewports.size() ? uint32_t(viewports.size()) : dynamicViewportCount;
+            viewportStateCi.scissorCount = scissors.size() ? uint32_t(scissors.size()) : dynamicScissorCount;
+            colorBlendStateCi.attachmentCount = colorBlendAttachmentStates.size();
+            dynamicStateCi.dynamicStateCount = dynamicStates.size();
+            UpdateAllArrayAddresses();
+        }
+    private:
+        void SetCreateInfos() {
+            createInfo.pVertexInputState = &vertexInputStateCi;
+            createInfo.pInputAssemblyState = &inputAssemblyStateCi;
+            createInfo.pTessellationState = &tessellationStateCi;
+            createInfo.pViewportState = &viewportStateCi;
+            createInfo.pRasterizationState = &rasterizationStateCi;
+            createInfo.pMultisampleState = &multisampleStateCi;
+            createInfo.pDepthStencilState = &depthStencilStateCi;
+            createInfo.pColorBlendState = &colorBlendStateCi;
+            createInfo.pDynamicState = &dynamicStateCi;
+        }
+        void UpdateAllArrayAddresses() {
+            createInfo.pStages = shaderStages.data();
+            vertexInputStateCi.pVertexBindingDescriptions = vertexInputBindings.data();
+            vertexInputStateCi.pVertexAttributeDescriptions = vertexInputAttributes.data();
+            viewportStateCi.pViewports = viewports.data();
+            viewportStateCi.pScissors = scissors.data();
+            colorBlendStateCi.pAttachments = colorBlendAttachmentStates.data();
+            dynamicStateCi.pDynamicStates = dynamicStates.data();
+        }
+    };
+    struct imageOperation {
+        struct imageMemoryBarrierParameterPack {
+            const bool isNeeded = false;
+            const VkPipelineStageFlags stage = 0;
+            const VkAccessFlags access = 0;
+            const VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+            constexpr imageMemoryBarrierParameterPack() = default;
+            constexpr imageMemoryBarrierParameterPack(VkPipelineStageFlags stage, VkAccessFlags access, VkImageLayout layout) :
+                isNeeded(true), stage(stage), access(access), layout(layout) {}
+        };
+        static void CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer buffer, VkImage image, const VkBufferImageCopy& region,
+            imageMemoryBarrierParameterPack imb_from, imageMemoryBarrierParameterPack imb_to) {
+            VkImageMemoryBarrier imageMemoryBarrier = {
+                VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                nullptr,
+                imb_from.access,
+                VK_ACCESS_TRANSFER_WRITE_BIT,
+                imb_from.layout,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_QUEUE_FAMILY_IGNORED, //无队列族所有权转移
+                VK_QUEUE_FAMILY_IGNORED,
+                image,
+                {
+                    region.imageSubresource.aspectMask,
+                    region.imageSubresource.mipLevel,
+                    1,
+                    region.imageSubresource.baseArrayLayer,
+                    region.imageSubresource.layerCount }
+            };
+            if (imb_from.isNeeded)
+                vkCmdPipelineBarrier(commandBuffer, imb_from.stage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+            vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+            if (imb_to.isNeeded) {
+                imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                imageMemoryBarrier.dstAccessMask = imb_to.access;
+                imageMemoryBarrier.newLayout = imb_to.layout;
+                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, imb_to.stage, 0,
+                    0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+            }
+        }
+        static void CmdBlitImage(VkCommandBuffer commandBuffer, VkImage image_src, VkImage image_dst, const VkImageBlit& region,
+            imageMemoryBarrierParameterPack imb_dst_from, imageMemoryBarrierParameterPack imb_dst_to, VkFilter filter = VK_FILTER_LINEAR) {
+            VkImageMemoryBarrier imageMemoryBarrier = {
+                VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                nullptr,
+                imb_dst_from.access,
+                VK_ACCESS_TRANSFER_WRITE_BIT,
+                imb_dst_from.layout,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_QUEUE_FAMILY_IGNORED,
+                VK_QUEUE_FAMILY_IGNORED,
+                image_dst,
+                {
+                    region.dstSubresource.aspectMask,
+                    region.dstSubresource.mipLevel,
+                    1,
+                    region.dstSubresource.baseArrayLayer,
+                    region.dstSubresource.layerCount }
+            };
+            if (imb_dst_from.isNeeded)
+                vkCmdPipelineBarrier(commandBuffer, imb_dst_from.stage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                    0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+            vkCmdBlitImage(commandBuffer,
+                image_src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                image_dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1, &region, filter);
+            if (imb_dst_to.isNeeded) {
+                imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                imageMemoryBarrier.dstAccessMask = imb_dst_to.access;
+                imageMemoryBarrier.newLayout = imb_dst_to.layout;
+                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, imb_dst_to.stage, 0,
+                    0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+            }
+        }
+        static void CmdGenerateMipmap2d(VkCommandBuffer commandBuffer, VkImage image, VkExtent2D imageExtent, uint32_t mipLevelCount, uint32_t layerCount,
+            imageMemoryBarrierParameterPack imb_to, VkFilter minFilter = VK_FILTER_LINEAR) {
+            auto MipmapExtent = [](VkExtent2D imageExtent, uint32_t mipLevel) {
+                VkOffset3D extent = { int32_t(imageExtent.width >> mipLevel), std::max(int32_t(imageExtent.height >> mipLevel), 1), 1 };
+                extent.x += !extent.x;
+                extent.y += !extent.y;
+                return extent;
+            };
+            if (layerCount > 1) {
+                std::unique_ptr<VkImageBlit[]> regions = std::make_unique<VkImageBlit[]>(layerCount);
+                for (uint32_t i = 1; i < mipLevelCount; i++) {
+                    VkOffset3D mipmapExtent_src = MipmapExtent(imageExtent, i - 1);
+                    VkOffset3D mipmapExtent_dst = MipmapExtent(imageExtent, i);
+                    for (uint32_t j = 1; j < layerCount; j++)
+                        regions[j] = {
+                            { VK_IMAGE_ASPECT_COLOR_BIT, i - 1, j, 1 },
+                            { {}, mipmapExtent_src },
+                            { VK_IMAGE_ASPECT_COLOR_BIT, i, j, 1 },
+                            { {}, mipmapExtent_dst }
+                        };
+                    VkImageMemoryBarrier imageMemoryBarrier = {
+                        VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                        nullptr,
+                        0,
+                        VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_IMAGE_LAYOUT_UNDEFINED,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_QUEUE_FAMILY_IGNORED,
+                        VK_QUEUE_FAMILY_IGNORED,
+                        image,
+                        { VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, layerCount }
+                    };
+                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                        0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+                    vkCmdBlitImage(commandBuffer,
+                        image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        layerCount, regions.get(), minFilter);
+                    imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                        0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+                }
+            }
+            else            
+                for (uint32_t i = 1; i < mipLevelCount; i++) {
+                    VkImageBlit region = {
+                        { VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 0, layerCount },
+                        { {}, MipmapExtent(imageExtent, i - 1) },
+                        { VK_IMAGE_ASPECT_COLOR_BIT, i, 0, layerCount },
+                        { {}, MipmapExtent(imageExtent, i) }
+                    };
+                    CmdBlitImage(commandBuffer, image, image, region,
+                        { VK_PIPELINE_STAGE_TRANSFER_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED },
+                        { VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL }, minFilter);
+                }
+            if (imb_to.isNeeded) {
+                VkImageMemoryBarrier imageMemoryBarrier = {
+                    VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                    nullptr,
+                    0,
+                    imb_to.access,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    imb_to.layout,
+                    VK_QUEUE_FAMILY_IGNORED,
+                    VK_QUEUE_FAMILY_IGNORED,
+                    image,
+                    { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevelCount, 0, layerCount }
+                };
+                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, imb_to.stage, 0,
+                    0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+            }
+        }
+    };
     class graphicsBasePlus {
         VkFormatProperties formatProperties[std::size(formatInfos_v1_0)] = {};
         commandPool commandPool_graphics;
@@ -429,21 +685,109 @@ namespace vulkan {
             return LoadFile_Internal(fileBinaries, fileSize, extent, requiredFormatInfo);
         }
         static uint32_t CalculateMipLevelCount(VkExtent2D extent) {
-            /*涉及生成mipmap，待填充*/
+            return uint32_t(std::floor(std::log2(std::max(extent.width, extent.height)))) + 1;
         }
         static void CopyBlitAndGenerateMipmap2d(VkBuffer buffer_copyFrom, VkImage image_copyTo, VkImage image_blitTo, VkExtent2D imageExtent,
             uint32_t mipLevelCount = 1, uint32_t layerCount = 1, VkFilter minFilter = VK_FILTER_LINEAR) {
-            /*涉及生成mipmap，待填充*/
+            static constexpr imageOperation::imageMemoryBarrierParameterPack imbs[2] = {
+                { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+                { VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL }
+            };
+            bool generateMipmap = mipLevelCount > 1;
+            bool blitMipLevel0 = image_copyTo != image_blitTo;
+            auto& commandBuffer = graphicsBase::Plus().CommandBuffer_Transfer();
+            commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+            VkBufferImageCopy region = {
+                .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, layerCount },
+                .imageExtent = { imageExtent.width, imageExtent.height, 1 }
+            };
+            imageOperation::CmdCopyBufferToImage(commandBuffer, buffer_copyFrom, image_copyTo, region,
+                { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED }, imbs[generateMipmap || blitMipLevel0]);
+            if (blitMipLevel0) {
+                VkImageBlit region = {
+                    { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, layerCount },
+                    { {}, { int32_t(imageExtent.width), int32_t(imageExtent.height), 1 } },
+                    { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, layerCount },
+                    { {}, { int32_t(imageExtent.width), int32_t(imageExtent.height), 1 } }
+                };
+                imageOperation::CmdBlitImage(commandBuffer, image_copyTo, image_blitTo, region,
+                    { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED }, imbs[generateMipmap], minFilter);
+            }
+            if (generateMipmap)
+				imageOperation::CmdGenerateMipmap2d(commandBuffer, image_blitTo, imageExtent, mipLevelCount, layerCount,
+					{ VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }, minFilter);
+
+            commandBuffer.End();
+            graphicsBase::Plus().ExecuteCommandBuffer_Graphics(commandBuffer);
         }
         static void BlitAndGenerateMipmap2d(VkImage image_preinitialized, VkImage image_final, VkExtent2D imageExtent,
             uint32_t mipLevelCount = 1, uint32_t layerCount = 1, VkFilter minFilter = VK_FILTER_LINEAR) {
-            /*涉及生成mipmap，待填充*/
+            static constexpr imageOperation::imageMemoryBarrierParameterPack imbs[2] = {
+                { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+                { VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL }
+            };
+            bool generateMipmap = mipLevelCount > 1;
+            bool blitMipLevel0 = image_preinitialized != image_final;
+            if (generateMipmap || blitMipLevel0) {
+                auto& commandBuffer = graphicsBase::Plus().CommandBuffer_Transfer();
+                commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+                if (blitMipLevel0) {
+                    VkImageMemoryBarrier imageMemoryBarrier = {
+                        VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                        nullptr,
+                        0,
+                        VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_IMAGE_LAYOUT_PREINITIALIZED,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_QUEUE_FAMILY_IGNORED,
+                        VK_QUEUE_FAMILY_IGNORED,
+                        image_preinitialized,
+                        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, layerCount }
+                    };
+                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                        0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+                    VkImageBlit region = {
+                        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, layerCount },
+                        { {}, { int32_t(imageExtent.width), int32_t(imageExtent.height), 1 } },
+                        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, layerCount },
+                        { {}, { int32_t(imageExtent.width), int32_t(imageExtent.height), 1 } }
+                    };
+                    imageOperation::CmdBlitImage(commandBuffer, image_preinitialized, image_final, region,
+                        { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED }, imbs[generateMipmap], minFilter);
+                }
+                if (generateMipmap)
+					imageOperation::CmdGenerateMipmap2d(commandBuffer, image_final, imageExtent, mipLevelCount, layerCount,
+						{ VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }, minFilter);
+                commandBuffer.End();
+                graphicsBase::Plus().ExecuteCommandBuffer_Graphics(commandBuffer);
+            }
+        }
+        static VkSamplerCreateInfo SamplerCreateInfo() {
+            return {
+                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                .magFilter = VK_FILTER_LINEAR,
+                .minFilter = VK_FILTER_LINEAR,
+                .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                .mipLodBias = 0.f,
+                .anisotropyEnable = VK_TRUE,
+                .maxAnisotropy = graphicsBase::Base().PhysicalDeviceProperties().limits.maxSamplerAnisotropy,
+                .compareEnable = VK_FALSE,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .minLod = 0.f,
+                .maxLod = VK_LOD_CLAMP_NONE,
+                .borderColor = {},
+                .unnormalizedCoordinates = VK_FALSE
+            };
         }
     };
     class texture2d :public texture {
     protected:
         VkExtent2D extent = {};
-        //--------------------
         void Create_Internal(VkFormat format_initial, VkFormat format_final, bool generateMipmap) {
             uint32_t mipLevelCount = generateMipmap ? CalculateMipLevelCount(extent) : 1;
             CreateImageMemory(VK_IMAGE_TYPE_2D, format_final, { extent.width, extent.height, 1 }, mipLevelCount, 1);
@@ -480,7 +824,6 @@ namespace vulkan {
         uint32_t Width() const { return extent.width; }
         uint32_t Height() const { return extent.height; }
         //Non-const Function
-        //直接从硬盘读取文件
         void Create(const char* filepath, VkFormat format_initial, VkFormat format_final, bool generateMipmap = true) {
             VkExtent2D extent;
             formatInfo formatInfo = FormatInfo(format_initial); //根据指定的format_initial取得格式信息
@@ -488,7 +831,6 @@ namespace vulkan {
             if (pImageData)
                 Create(pImageData.get(), extent, format_initial, format_final, generateMipmap);
         }
-        //从内存读取文件数据
         void Create(const uint8_t* pImageData, VkExtent2D extent, VkFormat format_initial, VkFormat format_final, bool generateMipmap = true) {
             this->extent = extent;
             size_t imageDataSize = size_t(FormatInfo(format_initial).sizePerPixel) * extent.width * extent.height;
@@ -496,185 +838,6 @@ namespace vulkan {
             Create_Internal(format_initial, format_final, generateMipmap);
         }
     };
-    struct graphicsPipelineCreateInfoPack {
-        VkGraphicsPipelineCreateInfo createInfo =
-        { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-        std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-        //Vertex Input
-        VkPipelineVertexInputStateCreateInfo vertexInputStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
-        std::vector<VkVertexInputBindingDescription> vertexInputBindings;
-        std::vector<VkVertexInputAttributeDescription> vertexInputAttributes;
-        //Input Assembly
-        VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
-        //Tessellation
-        VkPipelineTessellationStateCreateInfo tessellationStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO };
-        //Viewport
-        VkPipelineViewportStateCreateInfo viewportStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
-        std::vector<VkViewport> viewports;
-        std::vector<VkRect2D> scissors;
-        uint32_t dynamicViewportCount = 1;
-        uint32_t dynamicScissorCount = 1;
-        //Rasterization
-        VkPipelineRasterizationStateCreateInfo rasterizationStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-        //Multisample
-        VkPipelineMultisampleStateCreateInfo multisampleStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-        //Depth & Stencil
-        VkPipelineDepthStencilStateCreateInfo depthStencilStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-        //Color Blend
-        VkPipelineColorBlendStateCreateInfo colorBlendStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-        std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachmentStates;
-        //Dynamic
-        VkPipelineDynamicStateCreateInfo dynamicStateCi =
-        { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-        std::vector<VkDynamicState> dynamicStates;
-        //--------------------
-        graphicsPipelineCreateInfoPack() {
-            SetCreateInfos();
-            createInfo.basePipelineIndex = -1;
-        }
-        graphicsPipelineCreateInfoPack(const graphicsPipelineCreateInfoPack& other) noexcept {
-            createInfo = other.createInfo;
-            SetCreateInfos();
-
-            vertexInputStateCi = other.vertexInputStateCi;
-            inputAssemblyStateCi = other.inputAssemblyStateCi;
-            tessellationStateCi = other.tessellationStateCi;
-            viewportStateCi = other.viewportStateCi;
-            rasterizationStateCi = other.rasterizationStateCi;
-            multisampleStateCi = other.multisampleStateCi;
-            depthStencilStateCi = other.depthStencilStateCi;
-            colorBlendStateCi = other.colorBlendStateCi;
-            dynamicStateCi = other.dynamicStateCi;
-
-            shaderStages = other.shaderStages;
-            vertexInputBindings = other.vertexInputBindings;
-            vertexInputAttributes = other.vertexInputAttributes;
-            viewports = other.viewports;
-            scissors = other.scissors;
-            colorBlendAttachmentStates = other.colorBlendAttachmentStates;
-            dynamicStates = other.dynamicStates;
-            UpdateAllArrayAddresses();
-        }
-        //Getter
-        operator VkGraphicsPipelineCreateInfo& () { return createInfo; }
-        //Non-const Function
-        void UpdateAllArrays() {
-            createInfo.stageCount = shaderStages.size();
-            vertexInputStateCi.vertexBindingDescriptionCount = vertexInputBindings.size();
-            vertexInputStateCi.vertexAttributeDescriptionCount = vertexInputAttributes.size();
-            viewportStateCi.viewportCount = viewports.size() ? uint32_t(viewports.size()) : dynamicViewportCount;
-            viewportStateCi.scissorCount = scissors.size() ? uint32_t(scissors.size()) : dynamicScissorCount;
-            colorBlendStateCi.attachmentCount = colorBlendAttachmentStates.size();
-            dynamicStateCi.dynamicStateCount = dynamicStates.size();
-            UpdateAllArrayAddresses();
-        }
-    private:
-        void SetCreateInfos() {
-            createInfo.pVertexInputState = &vertexInputStateCi;
-            createInfo.pInputAssemblyState = &inputAssemblyStateCi;
-            createInfo.pTessellationState = &tessellationStateCi;
-            createInfo.pViewportState = &viewportStateCi;
-            createInfo.pRasterizationState = &rasterizationStateCi;
-            createInfo.pMultisampleState = &multisampleStateCi;
-            createInfo.pDepthStencilState = &depthStencilStateCi;
-            createInfo.pColorBlendState = &colorBlendStateCi;
-            createInfo.pDynamicState = &dynamicStateCi;
-        }
-        void UpdateAllArrayAddresses() {
-            createInfo.pStages = shaderStages.data();
-            vertexInputStateCi.pVertexBindingDescriptions = vertexInputBindings.data();
-            vertexInputStateCi.pVertexAttributeDescriptions = vertexInputAttributes.data();
-            viewportStateCi.pViewports = viewports.data();
-            viewportStateCi.pScissors = scissors.data();
-            colorBlendStateCi.pAttachments = colorBlendAttachmentStates.data();
-            dynamicStateCi.pDynamicStates = dynamicStates.data();
-        }
-    };
-    struct imageOperation {
-        struct imageMemoryBarrierParameterPack {
-            const bool isNeeded = false;
-            const VkPipelineStageFlags stage = 0;
-            const VkAccessFlags access = 0;
-            const VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-            constexpr imageMemoryBarrierParameterPack() = default;
-            constexpr imageMemoryBarrierParameterPack(VkPipelineStageFlags stage, VkAccessFlags access, VkImageLayout layout) :
-                isNeeded(true), stage(stage), access(access), layout(layout) {}
-        };
-        static void CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer buffer, VkImage image, const VkBufferImageCopy& region,
-            imageMemoryBarrierParameterPack imb_from, imageMemoryBarrierParameterPack imb_to) {
-            VkImageMemoryBarrier imageMemoryBarrier = {
-                VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                nullptr,
-                imb_from.access,
-                VK_ACCESS_TRANSFER_WRITE_BIT,
-                imb_from.layout,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_QUEUE_FAMILY_IGNORED, //无队列族所有权转移
-                VK_QUEUE_FAMILY_IGNORED,
-                image,
-                {
-                    region.imageSubresource.aspectMask,
-                    region.imageSubresource.mipLevel,
-                    1,
-                    region.imageSubresource.baseArrayLayer,
-                    region.imageSubresource.layerCount }
-            };
-            if (imb_from.isNeeded)
-                vkCmdPipelineBarrier(commandBuffer, imb_from.stage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-            0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-            vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-            if (imb_to.isNeeded) {
-                imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                imageMemoryBarrier.dstAccessMask = imb_to.access;
-                imageMemoryBarrier.newLayout = imb_to.layout;
-                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, imb_to.stage, 0,
-                    0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-            }
-        }
-        static void CmdBlitImage(VkCommandBuffer commandBuffer, VkImage image_src, VkImage image_dst, const VkImageBlit& region,
-            imageMemoryBarrierParameterPack imb_dst_from, imageMemoryBarrierParameterPack imb_dst_to, VkFilter filter = VK_FILTER_LINEAR) {
-            VkImageMemoryBarrier imageMemoryBarrier = {
-                VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                nullptr,
-                imb_dst_from.access,
-                VK_ACCESS_TRANSFER_WRITE_BIT,
-                imb_dst_from.layout,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_QUEUE_FAMILY_IGNORED,
-                VK_QUEUE_FAMILY_IGNORED,
-                image_dst,
-                {
-                    region.dstSubresource.aspectMask,
-                    region.dstSubresource.mipLevel,
-                    1,
-                    region.dstSubresource.baseArrayLayer,
-                    region.dstSubresource.layerCount }
-            };
-            if (imb_dst_from.isNeeded)
-                vkCmdPipelineBarrier(commandBuffer, imb_dst_from.stage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                    0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-            vkCmdBlitImage(commandBuffer,
-                image_src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                image_dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                1, &region, filter);
-            if (imb_dst_to.isNeeded) {
-                imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                imageMemoryBarrier.dstAccessMask = imb_dst_to.access;
-                imageMemoryBarrier.newLayout = imb_dst_to.layout;
-                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, imb_dst_to.stage, 0,
-                    0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-            }
-        }
-    };
+    
+    
 }
