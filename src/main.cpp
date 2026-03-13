@@ -72,7 +72,7 @@ void CreatePipeline() {
 int main() {
     if (!InitializeWindow({1280,720}))
         return -1;
-    easyVulkan::BootScreen("image/2k.png", VK_FORMAT_R8G8B8A8_UNORM);
+    easyVulkan::BootScreen("image/720p.png", VK_FORMAT_R8G8B8A8_UNORM);
     std::this_thread::sleep_for(std::chrono::seconds(1)); 
     const auto& [renderPass, framebuffers] = RenderPassAndFramebuffers();
     CreateLayout();

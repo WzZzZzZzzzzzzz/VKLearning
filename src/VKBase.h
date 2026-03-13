@@ -63,8 +63,15 @@ namespace vulkan {
         uint32_t apiVersion = VK_API_VERSION_1_0;
         VkInstance instance;
         VkPhysicalDevice physicalDevice;
-        VkPhysicalDeviceProperties physicalDeviceProperties;
-        VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+        VkPhysicalDeviceFeatures2 physicalDeviceFeatures;
+		VkPhysicalDeviceVulkan11Features physicalDeviceVulkan11Features;//Provided by VK_API_VERSION_1_2
+		VkPhysicalDeviceVulkan12Features physicalDeviceVulkan12Features;
+		VkPhysicalDeviceVulkan13Features physicalDeviceVulkan13Features;
+        VkPhysicalDeviceProperties2 physicalDeviceProperties;
+        VkPhysicalDeviceVulkan11Properties physicalDeviceVulkan11Properties; //Provided by VK_API_VERSION_1_2
+        VkPhysicalDeviceVulkan12Properties physicalDeviceVulkan12Properties;
+        VkPhysicalDeviceVulkan13Properties physicalDeviceVulkan13Properties;
+        VkPhysicalDeviceMemoryProperties2 physicalDeviceMemoryProperties;
         std::vector<VkPhysicalDevice> availablePhysicalDevices;
 
         VkDevice device;
@@ -92,6 +99,12 @@ namespace vulkan {
         std::vector<void(*)()> callbacks_destroySwapchain;
         std::vector<void(*)()> callbacks_createDevice;
         std::vector<void(*)()> callbacks_destroyDevice;
+
+        void* pNext_instanceCreateInfo;
+        void* pNext_deviceCreateInfo;
+        void* pNext_physicalDeviceFeatures;
+        void* pNext_physicalDeviceProperties;
+        void* pNext_physicalDeviceMemoryProperties;
         
         VkDebugUtilsMessengerEXT debugMessenger;
 
@@ -246,12 +259,84 @@ namespace vulkan {
             }
             return VK_SUCCESS;
         }
+        void GetPhysicalDeviceFeatures() {
+            if (apiVersion >= VK_API_VERSION_1_1) {
+                physicalDeviceFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+                physicalDeviceVulkan11Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+                physicalDeviceVulkan12Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+                physicalDeviceVulkan13Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+                if (apiVersion >= VK_API_VERSION_1_2) {
+                    physicalDeviceFeatures.pNext = &physicalDeviceVulkan11Features;
+                    physicalDeviceVulkan11Features.pNext = &physicalDeviceVulkan12Features;
+                    if (apiVersion >= VK_API_VERSION_1_3)
+                        physicalDeviceVulkan12Features.pNext = &physicalDeviceVulkan13Features;
+                }
+                SetPNext(physicalDeviceFeatures.pNext, pNext_physicalDeviceFeatures);
+                vkGetPhysicalDeviceFeatures2(physicalDevice, &physicalDeviceFeatures);
+            }
+            else
+                vkGetPhysicalDeviceFeatures(physicalDevice, &physicalDeviceFeatures.features);
+        }
+        void GetPhysicalDeviceProperties() {
+            if (apiVersion >= VK_API_VERSION_1_1) {
+                physicalDeviceProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+                physicalDeviceVulkan11Properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES };
+                physicalDeviceVulkan12Properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES };
+                physicalDeviceVulkan13Properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES };
+                if (apiVersion >= VK_API_VERSION_1_2) {
+                    physicalDeviceProperties.pNext = &physicalDeviceVulkan11Properties;
+                    physicalDeviceVulkan11Properties.pNext = &physicalDeviceVulkan12Properties;
+                    if (apiVersion >= VK_API_VERSION_1_3)
+                        physicalDeviceVulkan12Properties.pNext = &physicalDeviceVulkan13Properties;
+                }
+                SetPNext(physicalDeviceProperties.pNext, pNext_physicalDeviceProperties);
+                vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties);
+                physicalDeviceMemoryProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2, pNext_physicalDeviceMemoryProperties };
+                vkGetPhysicalDeviceMemoryProperties2(physicalDevice, &physicalDeviceMemoryProperties);
+            }
+            else
+                vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties.properties),
+                vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties.memoryProperties);
+        }
+        static void** SetPNext(void*& pBegin, void* pNext, bool allowDuplicate = false) {
+            struct vkStructureHead {
+                VkStructureType sType;
+                void* pNext;
+            };
+            if (!pNext)
+                return nullptr;
+            auto SetPNext_Internal = [](this auto&& self, void*& pBegin, void* pNext, bool allowDuplicate)->void** {
+                if (pBegin == pNext)
+                    return nullptr;
+                if (pBegin)
+                    if (!allowDuplicate &&
+                        reinterpret_cast<vkStructureHead*>(pBegin)->sType == reinterpret_cast<vkStructureHead*>(pNext)->sType)
+                        return nullptr;
+                    else
+                        return self(reinterpret_cast<vkStructureHead*>(pBegin)->pNext, pNext, allowDuplicate);
+                else
+                    return &(pBegin = pNext);
+            };
+            return SetPNext_Internal(pBegin, pNext, allowDuplicate);
+        }
 
     public:
         // Getter
+        uint32_t ApiVersion() const {
+			return apiVersion;
+		}
         VkInstance Instance() const {
             return instance;
         }
+        constexpr const VkPhysicalDeviceFeatures& PhysicalDeviceFeatures() const { return physicalDeviceFeatures.features; }
+        constexpr const VkPhysicalDeviceVulkan11Features& PhysicalDeviceVulkan11Features() const { return physicalDeviceVulkan11Features; }
+        constexpr const VkPhysicalDeviceVulkan12Features& PhysicalDeviceVulkan12Features() const { return physicalDeviceVulkan12Features; }
+        constexpr const VkPhysicalDeviceVulkan13Features& PhysicalDeviceVulkan13Features() const { return physicalDeviceVulkan13Features; }
+        constexpr const VkPhysicalDeviceProperties& PhysicalDeviceProperties() const { return physicalDeviceProperties.properties; }
+        constexpr const VkPhysicalDeviceVulkan11Properties& PhysicalDeviceVulkan11Properties() const { return physicalDeviceVulkan11Properties; }
+        constexpr const VkPhysicalDeviceVulkan12Properties& PhysicalDeviceVulkan12Properties() const { return physicalDeviceVulkan12Properties; }
+        constexpr const VkPhysicalDeviceVulkan13Properties& PhysicalDeviceVulkan13Properties() const { return physicalDeviceVulkan13Properties; }
+        constexpr const VkPhysicalDeviceMemoryProperties& PhysicalDeviceMemoryProperties() const { return physicalDeviceMemoryProperties.memoryProperties; }
         const std::vector<const char*>& InstanceLayers() const {
             return instanceLayers;
         }
@@ -264,12 +349,6 @@ namespace vulkan {
 
         VkPhysicalDevice PhysicalDevice() const {
             return physicalDevice;
-        }
-        const VkPhysicalDeviceProperties& PhysicalDeviceProperties() const {
-            return physicalDeviceProperties;
-        }
-        const VkPhysicalDeviceMemoryProperties& PhysicalDeviceMemoryProperties() const {
-            return physicalDeviceMemoryProperties;
         }
         VkPhysicalDevice AvailablePhysicalDevice(uint32_t index) const {
             return availablePhysicalDevices[index];
@@ -357,7 +436,11 @@ namespace vulkan {
                 this->surface = surface;
         }
         static void Plus(graphicsBasePlus& plus) { if (!singleton.pPlus) singleton.pPlus = &plus; }
-
+        VkResult UseLatestApiVersion() {
+			if (vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"))
+				return vkEnumerateInstanceVersion(&apiVersion);
+			return VK_SUCCESS;
+		}
         result_t CreateInstance(VkInstanceCreateFlags flags = 0) {
             if constexpr (ENABLE_DEBUG_MESSENGER)
                 AddInstanceLayer("VK_LAYER_KHRONOS_validation");
@@ -368,6 +451,7 @@ namespace vulkan {
             };
             VkInstanceCreateInfo instanceCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                .pNext = pNext_instanceCreateInfo,
                 .flags = flags,
                 .pApplicationInfo = &applicationInfo,
                 .enabledLayerCount = uint32_t(instanceLayers.size()),
@@ -412,7 +496,7 @@ namespace vulkan {
                         i = nullptr;
                 }
             }
-            outStream << std::format("Renderer: {}\n", physicalDeviceProperties.deviceName);
+            outStream << std::format("Renderer: {}\n", physicalDeviceProperties.properties.deviceName);
             ExecuteCallbacks(callbacks_createDevice);
             return VK_SUCCESS;
         }
@@ -457,6 +541,9 @@ namespace vulkan {
         void AddDeviceExtension(const char* extensionName) {
             AddLayerOrExtension(deviceExtensions, extensionName);
         }
+
+
+
         result_t GetPhysicalDevices() {
             uint32_t deviceCount;
             if (VkResult result = vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr)) {
@@ -538,17 +625,26 @@ namespace vulkan {
                 queueFamilyIndex_compute != queueFamilyIndex_graphics &&
                 queueFamilyIndex_compute != queueFamilyIndex_presentation)
                 queueCreateInfos[queueCreateInfoCount++].queueFamilyIndex = queueFamilyIndex_compute;
-            VkPhysicalDeviceFeatures physicalDeviceFeatures;
-            vkGetPhysicalDeviceFeatures(physicalDevice, &physicalDeviceFeatures);
+            GetPhysicalDeviceFeatures();
             VkDeviceCreateInfo deviceCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+                // .pNext = pNext_deviceCreateInfo,
                 .flags = flags,
                 .queueCreateInfoCount = queueCreateInfoCount,
                 .pQueueCreateInfos = queueCreateInfos,
                 .enabledExtensionCount = uint32_t(deviceExtensions.size()),
                 .ppEnabledExtensionNames = deviceExtensions.data(),
-                .pEnabledFeatures = &physicalDeviceFeatures
+                // .pEnabledFeatures = &physicalDeviceFeatures
             };
+            void** ppNext = nullptr;
+            if (apiVersion >= VK_API_VERSION_1_1)
+                SetPNext(pNext_deviceCreateInfo, &physicalDeviceFeatures);
+            else
+                deviceCreateInfo.pEnabledFeatures = &physicalDeviceFeatures.features;
+            deviceCreateInfo.pNext = pNext_deviceCreateInfo;
+            VkResult result = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device);
+            if (ppNext)
+                *ppNext = nullptr;
             if (VkResult result = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device)) {
                 outStream << std::format("[ graphicsBase ] ERROR\nFailed to create a vulkan logical device!\nError code: {}\n", string_VkResult(result));
                 return result;
@@ -559,13 +655,10 @@ namespace vulkan {
                 vkGetDeviceQueue(device, queueFamilyIndex_presentation, 0, &queue_presentation);
             if (queueFamilyIndex_compute != VK_QUEUE_FAMILY_IGNORED)
                 vkGetDeviceQueue(device, queueFamilyIndex_compute, 0, &queue_compute);
-            
-
-
-            vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-            vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
-            outStream << std::format("Renderer: {}\n", physicalDeviceProperties.deviceName);
-            ExecuteCallbacks(callbacks_createDevice);
+            GetPhysicalDeviceProperties();
+            outStream << std::format("Renderer: {}\n", physicalDeviceProperties.properties.deviceName);
+            for (auto& i : callbacks_createDevice)
+                i();
             return VK_SUCCESS;
         }
         result_t RecreateDevice(VkDeviceCreateFlags flags = 0) {
