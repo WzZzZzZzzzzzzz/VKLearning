@@ -1,5 +1,6 @@
 #include "GlfwGeneral.hpp"
 #include "EasyVulkan.hpp"
+#include "VKBase.h"
 #include "vulkan/vulkan_core.h"
 using namespace vulkan;
 
@@ -9,8 +10,8 @@ struct vertex {
 };
 
 descriptorSetLayout descriptorSetLayout_texture;
-pipelineLayout pipelineLayout_texture;
-pipeline pipeline_texture;
+pipelineLayout pipelineLayout_triangle;
+pipeline pipeline_triangle;
 
 const auto& RenderPassAndFramebuffers() {
     static const auto& rpwf = easyVulkan::CreateRpwf_Screen();
@@ -33,25 +34,27 @@ void CreateLayout() {
         .setLayoutCount = 1,
         .pSetLayouts = descriptorSetLayout_texture.Address()
     };
-    pipelineLayout_texture.Create(pipelineLayoutCreateInfo);
+    pipelineLayout_triangle.Create(pipelineLayoutCreateInfo);
 }
 
 void CreatePipeline() {
-    static shaderModule vert("shader/Texture.vert.spv");
-    static shaderModule frag("shader/Texture.frag.spv");
+    static shaderModule vert("shader/FirstTriangle.vert.spv");
+    static shaderModule frag("shader/FirstTriangle.frag.spv");
     static VkPipelineShaderStageCreateInfo shaderStageCreateInfos_triangle[2] = {
         vert.StageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT),
         frag.StageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT)
     };
     auto Create = [] {
+        VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &graphicsBase::Base().SwapchainCreateInfo().imageFormat
+        };
         graphicsPipelineCreateInfoPack pipelineCiPack;
-        pipelineCiPack.createInfo.layout = pipelineLayout_texture;
-        pipelineCiPack.createInfo.renderPass = RenderPassAndFramebuffers().renderPass;
-        pipelineCiPack.vertexInputBindings.emplace_back(0, sizeof(vertex), VK_VERTEX_INPUT_RATE_VERTEX);
-        pipelineCiPack.vertexInputAttributes.emplace_back(0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(vertex, position));
-        pipelineCiPack.vertexInputAttributes.emplace_back(1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(vertex, texCoord));
-
-        pipelineCiPack.inputAssemblyStateCi.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        pipelineCiPack.createInfo.pNext = &pipelineRenderingCreateInfo;
+        pipelineCiPack.createInfo.layout = pipelineLayout_triangle;
+        // pipelineCiPack.createInfo.renderPass = RenderPassAndFramebuffers().renderPass;
+        pipelineCiPack.inputAssemblyStateCi.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         pipelineCiPack.viewports.emplace_back(0.f, 0.f, float(windowSize.width), float(windowSize.height), 0.f, 1.f);
         pipelineCiPack.scissors.emplace_back(VkOffset2D{}, windowSize);
         pipelineCiPack.multisampleStateCi.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
@@ -59,10 +62,10 @@ void CreatePipeline() {
         pipelineCiPack.UpdateAllArrays();
         pipelineCiPack.createInfo.stageCount = 2;
         pipelineCiPack.createInfo.pStages = shaderStageCreateInfos_triangle;
-        pipeline_texture.Create(pipelineCiPack);
+        pipeline_triangle.Create(pipelineCiPack);
     };
     auto Destroy = [] {
-        pipeline_texture.~pipeline();
+        pipeline_triangle.~pipeline();
     };
     graphicsBase::Base().AddCallback_CreateSwapchain(Create);
     graphicsBase::Base().AddCallback_DestroySwapchain(Destroy);
@@ -70,11 +73,25 @@ void CreatePipeline() {
 }
 
 int main() {
-    if (!InitializeWindow({1280,720}))
+    PFN_vkCmdBeginRenderingKHR vkCmdBeginRendering = ::vkCmdBeginRendering;
+    PFN_vkCmdEndRenderingKHR vkCmdEndRendering = ::vkCmdEndRendering;
+
+    graphicsBase::Base().UseLatestApiVersion();
+    if (graphicsBase::Base().ApiVersion() < VK_API_VERSION_1_2)
         return -1;
-    easyVulkan::BootScreen("image/720p.png", VK_FORMAT_R8G8B8A8_UNORM);
-    std::this_thread::sleep_for(std::chrono::seconds(1)); 
-    const auto& [renderPass, framebuffers] = RenderPassAndFramebuffers();
+    if (graphicsBase::Base().ApiVersion() < VK_API_VERSION_1_3) {
+        graphicsBase::Base().AddDeviceExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+        VkPhysicalDeviceDynamicRenderingFeatures physicalDeviceDynamicRenderingFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES };
+        graphicsBase::Base().AddNextStructure_PhysicalDeviceFeatures(physicalDeviceDynamicRenderingFeatures);
+        if (!InitializeWindow({ 1280, 720 }) || !physicalDeviceDynamicRenderingFeatures.dynamicRendering)
+        return -1;
+    vkCmdBeginRendering = reinterpret_cast<PFN_vkCmdBeginRenderingKHR>(vkGetDeviceProcAddr(graphicsBase::Base().Device(), "vkCmdBeginRenderingKHR"));
+    vkCmdEndRendering = reinterpret_cast<PFN_vkCmdEndRenderingKHR>(vkGetDeviceProcAddr(graphicsBase::Base().Device(), "vkCmdEndRenderingKHR"));
+    }
+    else 
+        if (!InitializeWindow({1280,720}) || !graphicsBase::Base().PhysicalDeviceVulkan13Features().dynamicRendering)
+            return -1;
+
     CreateLayout();
     CreatePipeline();
 
@@ -86,33 +103,6 @@ int main() {
     commandPool commandPool(graphicsBase::Base().QueueFamilyIndex_Graphics(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     commandPool.AllocateBuffers(commandBuffer);
 
-    texture2d texture("image/testImage.png", VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, true);
-    VkSamplerCreateInfo samplerCreateInfo = texture::SamplerCreateInfo();
-    sampler sampler(samplerCreateInfo);
-    VkDescriptorPoolSize descriptorPoolSizes[] = {
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
-    };
-    descriptorPool descriptorPool(1, descriptorPoolSizes);
-    descriptorSet descriptorSet_texture;
-    descriptorPool.AllocateSets(descriptorSet_texture, descriptorSetLayout_texture);
-    VkDescriptorImageInfo imageInfo = {
-        .sampler = sampler,
-        .imageView = texture.ImageView(),
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    };
-    descriptorSet_texture.Write(imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-
-    vertex vertices[] = {
-        { { -.5f, -.5f }, { 0, 0 } },
-        { {  .5f, -.5f }, { 1, 0 } },
-        { { -.5f,  .5f }, { 0, 1 } },
-        { {  .5f,  .5f }, { 1, 1 } }
-    };
-    vertexBuffer vertexBuffer(sizeof vertices);
-    vertexBuffer.TransferData(vertices);
-
-    VkClearValue clearColor = { .color = { 1.f, 0.f, 0.f, 1.f } };
-
     while (!glfwWindowShouldClose(pWindow)) {
         while (glfwGetWindowAttrib(pWindow, GLFW_ICONIFIED))
             glfwWaitEvents();
@@ -121,14 +111,67 @@ int main() {
         auto i = graphicsBase::Base().CurrentImageIndex();
 
         commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-        renderPass.CmdBegin(commandBuffer, framebuffers[i], { {}, windowSize }, clearColor);
-        VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffer.Address(), &offset);
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_texture);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			pipelineLayout_texture, 0, 1, descriptorSet_texture.Address(), 0, nullptr);
-		vkCmdDraw(commandBuffer, 4, 1, 0, 0);
-        renderPass.CmdEnd(commandBuffer);
+        VkSubpassDependency subpassDependency = {
+            .srcSubpass = VK_SUBPASS_EXTERNAL,
+            .dstSubpass = 0,
+            .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT
+        };
+        VkImageMemoryBarrier imageMemoryBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = graphicsBase::Base().SwapchainImage(i),
+            .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+        };
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_DEPENDENCY_BY_REGION_BIT,
+            0, nullptr,
+            0, nullptr,
+            1, &imageMemoryBarrier);
+        
+        VkRenderingAttachmentInfo colorAttachmentInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = graphicsBase::Base().SwapchainImageView(i),
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = { .color = { 1.f, 0.f, 0.f, 1.f} }
+        };
+        VkRenderingInfo renderingInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = { {}, {windowSize} },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &colorAttachmentInfo
+        };
+        vkCmdBeginRendering(commandBuffer, &renderingInfo);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_triangle);
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdEndRendering(commandBuffer);
+
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        imageMemoryBarrier.dstAccessMask = 0;
+        imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            VK_DEPENDENCY_BY_REGION_BIT,
+            0, nullptr,
+            0, nullptr,
+            1, &imageMemoryBarrier);
         commandBuffer.End();
 
         graphicsBase::Base().SubmitCommandBuffer_Graphics(commandBuffer, semaphore_imageIsAvailable, semaphore_renderingIsOver, fence);

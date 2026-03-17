@@ -542,7 +542,9 @@ namespace vulkan {
             AddLayerOrExtension(deviceExtensions, extensionName);
         }
 
-
+        void AddNextStructure_PhysicalDeviceFeatures(auto& next) {
+            SetPNext(pNext_physicalDeviceFeatures, &next);
+        }
 
         result_t GetPhysicalDevices() {
             uint32_t deviceCount;
